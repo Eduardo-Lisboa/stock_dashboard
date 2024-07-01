@@ -18,13 +18,17 @@ def build_sidebar():
 
     if tickers:
         prices = yf.download(tickers, start=start_date, end=end_date)["Adj Close"]
+        if len(tickers) == 1:
+            prices = prices.to_frame()
+            prices.columns = [tickers[0].replace(".SA","")]
         prices.columns = [t.replace(".SA","") for t in prices.columns]
+        prices['IBOV'] = yf.download("^BVSP", start=start_date, end=end_date)["Adj Close"]
         return  tickers, prices
     return None, None
 
 def build_main(tickers, prices):
     weights = np.ones(len(tickers))/len(tickers)
-    prices['portfolio'] = prices @ weights
+    prices['portfolio'] = prices.drop('IBOV', axis=1) @ weights
     norm_prices = 100*prices/prices.iloc[0]
     returns = prices.pct_change()[1:]
     vols    = returns.std()*np.sqrt(252)
@@ -37,11 +41,41 @@ def build_main(tickers, prices):
         colA, colB, colC = c.columns(3)
         if t == "portfolio":
             colA.image("image/pie-dollar.svg")
+        elif t == "IBOV":
+            colA.image("image/pie-chart-svgrepo-com.svg")
         else:
             colA.image(f'https://raw.githubusercontent.com/thefintz/icones-b3/main/icones/{t}.png', width=65)
         colB.metric(label="Retorno", value=f"{rets[t]:.0%}")
         colC.metric(label="Volatilidade", value=f"{vols[t]:.0%}")
         style_metric_cards(background_color='rgba(255,255,255,0)')
+
+    col1, col2 = st.columns(2, gap="large")
+    with col1:
+        st.subheader("Desempenho Relativo")
+        st.line_chart(norm_prices, height=600)
+
+    with col2:
+        st.subheader("Risco Retorno")
+        fig = px.scatter(
+            x=vols,
+            y=rets,
+            text=prices.columns,
+            color=rets/vols,
+            color_continuous_scale=px.colors.sequential.Viridis,
+        )
+        
+        fig.update_traces(
+            textfont_color='white', 
+            marker=dict(size=45),
+            textfont_size=10,                  
+        )
+        fig.layout.yaxis.title = 'Retorno Total'
+        fig.layout.xaxis.title = 'Volatilidade (anualizada)'
+        fig.layout.height = 600
+        fig.layout.xaxis.tickformat = ".0%"
+        fig.layout.yaxis.tickformat = ".0%"        
+        fig.layout.coloraxis.colorbar.title = 'Sharpe'
+        st.plotly_chart(fig, use_container_width=True)
 
     
         
